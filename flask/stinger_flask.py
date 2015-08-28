@@ -44,7 +44,8 @@ class Insert(Resource):
     })
     edgesSpec = api.model('Insert', {
         'edges': fields.List(fields.Nested(edge), description='List of edges', required=True),
-        'immediate': fields.Boolean(description='Instructs the API to send this batch to STINGER immediately upon receipt', required=False, default=False)
+        'immediate': fields.Boolean(description='Instructs the API to send this batch to STINGER immediately upon receipt', required=False, default=False),
+        'strings': fields.Boolean(description='Instructs the API to interpret integer vertex names as strings rather than integer vertex IDs', required=False, default=True)
     })
     @api.expect(edgesSpec)
     @api.doc(responses={
@@ -54,8 +55,77 @@ class Insert(Resource):
     })
     def post(self):
         global q
-        global cur
-        global con
+
+        exec_time = time.time()
+        if not request.json:
+            r = json.dumps({"error": "Invalid input"})
+            return Response(response=r,status=400,mimetype="application/json")
+
+        # grab the lock
+        counter_lock.acquire()
+
+        try:
+            data = request.json
+            send_immediate = False if 'immediate' not in data else data['immediate']
+            only_strings = True if 'strings' not in data else data['strings']
+
+            if isinstance(data["edges"], list):
+                edges = data["edges"]
+                print "Received batch of size", len(edges), 'at', strftime("%Y%m%d%H%M%S", gmtime()),""
+                for x in edges:
+                    try:
+                        if only_strings:
+                            source = str(x["src"])
+                            destination = str(x["dest"])
+                        else:
+                            source = x["src"]
+                            destination = x["dest"]
+                        edge_type = x["type"] if 'type' in x else 0
+                        timestamp = int(x["time"]) if 'time' in x else 0
+                        s.add_insert(source, destination, edge_type, ts=timestamp, insert_strings=only_strings)
+                        print "added edge", source, destination, edge_type, timestamp
+                    except Exception as e:
+                        print(traceback.format_exc())
+                        pass
+
+                # send immediately if the batch is now large
+                current_batch_size = s.insertions_count + s.deletions_count + s.vertex_updates_count
+                if current_batch_size > BATCH_THRESHOLD and BATCH_THRESHOLD > 0 or send_immediate:
+                    s.send_batch()
+                    print "Sending  batch of size", current_batch_size, 'at', strftime("%Y%m%d%H%M%S", gmtime()),""
+
+        except:
+            print(traceback.format_exc())
+            r = json.dumps({"error": "Unable to parse object"})
+            return Response(response=r,status=400,mimetype="application/json")
+
+        # end critical section
+        finally:
+            counter_lock.release()
+        exec_time = time.time() - exec_time
+        r = json.dumps({"status": "success", "time": exec_time, "current_batch_size": current_batch_size})
+        return Response(response=r,status=201,mimetype="application/json")
+
+@api.route('/vertex',endpoint='vertex')
+class VertexUpdate(Resource):
+    vertexUpdate = api.model('VertexUpdate', {
+        'vertex': fields.String(required=True, description='Vertex Name'),
+        'vtype': fields.String(required=True, description='Vertex Type Name (None = 0)'),
+        'set_weight': fields.String(required=False, description='Edge type'),
+        'incr_weight': fields.Integer(required=False, description='Timestamp')
+    })
+    vertexUpdateSpec = api.model('Update', {
+        'vertexUpdates': fields.List(fields.Nested(vertexUpdate), description='List of Vertex Updates', required=True),
+        'immediate': fields.Boolean(description='Instructs the API to send this batch to STINGER immediately upon receipt', required=False, default=False)
+    })
+    @api.expect(vertexUpdateSpec)    
+    @api.doc(responses={
+        201: 'Vertices Updated',
+        400: 'Bad Request',
+        503: 'Unable to reach STINGER'
+    })
+    def post(self):
+        global q
 
         exec_time = time.time()
         if not request.json:
@@ -71,26 +141,25 @@ class Insert(Resource):
             if 'immediate' in data:
                 if data['immediate'] == True:
                     send_immediate = True
-            if isinstance(data["edges"], list):
-                edges = data["edges"]
-                print "Received batch of size", len(edges), 'at', strftime("%Y%m%d%H%M%S", gmtime()),""
-                for x in edges:
+            if isinstance(data["vertexUpdates"], list):
+                vertexUpdates = data["vertexUpdates"]
+                print "Received batch of size", len(vertexUpdates), 'at', strftime("%Y%m%d%H%M%S", gmtime()),""
+                for x in vertexUpdates:
                     try:
-                        source = str(x["src"])
-                        destination = str(x["dest"])
-                        edge_type = x["type"] if 'type' in x else 0
-                        timestamp = int(x["time"]) if 'time' in x else 0
-                        s.add_insert(source, destination, edge_type, ts=timestamp)
-                        #   print "added edge", source, destination, edge_type, timestamp
+                        vtx = str(x["vertex"])
+                        vtype = str(x["vtype"])
+                        set_weight = x["set_weight"] if 'set_weight' in x else 0
+                        incr_weight = int(x["incr_weight"]) if 'incr_weight' in x else 0
+                        s.add_vertex_update(vtx, vtype, set_weight, incr_weight)
                     except Exception as e:
                         print(traceback.format_exc())
                         pass
 
                 # send immediately if the batch is now large
-                current_batch_size = s.insertions_count + s.deletions_count
+                current_batch_size = s.insertions_count + s.deletions_count + s.vertex_updates_count
                 if current_batch_size > BATCH_THRESHOLD and BATCH_THRESHOLD > 0 or send_immediate:
-                    s.send_batch()
                     print "Sending  batch of size", current_batch_size, 'at', strftime("%Y%m%d%H%M%S", gmtime()),""
+                    s.send_batch()
 
         except:
             print(traceback.format_exc())
@@ -183,7 +252,7 @@ def connect(undirected=False,strings=True):
 # attempt to send a batch every TIMEOUT_SECS seconds
 #
 def sendBatch():
-    current_batch_size = s.insertions_count + s.deletions_count
+    current_batch_size = s.insertions_count + s.deletions_count + s.vertex_updates_count
     if current_batch_size > 0:
         counter_lock.acquire()
         try:
