@@ -229,7 +229,7 @@ class Health(Resource):
 
 def stingerRPC(payload):
     try:
-        urlstr = 'http://{}:{}/jsonrpc'.format(STINGER_HOST,STINGER_RPC_PORT)
+        urlstr = 'http://{0}:{1}/jsonrpc'.format(STINGER_HOST,STINGER_RPC_PORT)
         r = requests.post(urlstr, data=json.dumps(payload))
     except:
         print(traceback.format_exc())
@@ -243,6 +243,8 @@ def stingerRPC(payload):
 def connect(undirected=False,strings=True):
     global s
     s = sn.StingerStream(STINGER_HOST, 10102, strings, undirected)
+    if s.sock_handle == -1:
+        raise Exception("Failed to connect to STINGER")
     directedness = 'UNdirected' if undirected else 'directed'
     print "Edges will be inserted as",directedness
 
@@ -279,14 +281,14 @@ def setupSTINGERConnection():
         try:
             connect(args.undirected)
             print 'STINGER connection successful'
-        except e as Exception:
+        except Exception as e:
             print str(e)
             print 'STINGER connection unsuccessful'
     if not 't' in globals():
         try:
             sendBatch()
             print 'STINGER timer setup successful'
-        except e as Exception:
+        except Exception as e:
             print str(e)
             print 'STINGER timer setup unsuccessful'
 
