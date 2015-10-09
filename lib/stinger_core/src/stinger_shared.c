@@ -20,8 +20,8 @@ sigbus_handler(int sig, siginfo_t *si, void * vuctx)
 {
   char * err_string = 
     "FATAL: stinger_shared.c X: Bus Error - writing to STINGER failed.  It is likely that your STINGER is too large.\n"
-    "       Try reducing the number of vertices and/or edges per block in stinger_defs.h.  See the 'Handling Common\n"
-    "       Errors' section of the README.md for more information on how to do this.\n";
+    "       You may need to increase the size of your /dev/shm to be larger than 1/2 of total memory.\n"
+    "       See the 'Handling Common Errors' section of the README.md for more information on how to do this.\n";
   write(STDERR_FILENO, err_string, strlen(err_string));
   _exit(-1);
 }
@@ -150,11 +150,16 @@ shmunlink (const char * name) {
 struct stinger *
 stinger_shared_new (char ** out)
 {
-  return stinger_shared_new_full(out, 0, 0, 0, 0);
+  struct stinger_config_t * config = (struct stinger_config_t *)xcalloc(1,sizeof(struct stinger_config_t));
+
+  struct stinger * s = stinger_shared_new_full(out, config);
+  xfree(config);
+
+  return s;
 }
 
 struct stinger *
-stinger_shared_new_full (char ** out, int64_t nv, int64_t nebs, int64_t netypes, int64_t nvtypes)
+stinger_shared_new_full (char ** out, struct stinger_config_t * config)
 {
   if (*out == NULL)
   {
@@ -168,12 +173,14 @@ stinger_shared_new_full (char ** out, int64_t nv, int64_t nebs, int64_t netypes,
 #endif
   }                              
 
-  nv      = nv      ? nv      : STINGER_DEFAULT_VERTICES;
-  nebs    = nebs    ? nebs    : STINGER_DEFAULT_NEB_FACTOR * nv;
-  netypes = netypes ? netypes : STINGER_DEFAULT_NUMETYPES;
-  nvtypes = nvtypes ? nvtypes : STINGER_DEFAULT_NUMVTYPES;
+  int64_t nv      = config->nv      ? config->nv      : STINGER_DEFAULT_VERTICES;
+  int64_t nebs    = config->nebs    ? config->nebs    : STINGER_DEFAULT_NEB_FACTOR * nv;
+  int64_t netypes = config->netypes ? config->netypes : STINGER_DEFAULT_NUMETYPES;
+  int64_t nvtypes = config->nvtypes ? config->nvtypes : STINGER_DEFAULT_NUMVTYPES;
 
-  const size_t memory_size = stinger_max_memsize ();
+  size_t max_memsize_env = stinger_max_memsize();
+
+  const size_t memory_size = (config->memory_size == 0) ? max_memsize_env : config->memory_size;
  
   size_t i;
   int resized   = 0;
@@ -182,7 +189,11 @@ stinger_shared_new_full (char ** out, int64_t nv, int64_t nebs, int64_t netypes,
   while (1) {
     sizes = calculate_stinger_size(nv, nebs, netypes, nvtypes);
 
-    if(sizes.size > (((uint64_t)memory_size * 3) / 4)) {
+    if(sizes.size > (uint64_t)memory_size) {
+      if (config->no_resize) {
+        LOG_E("STINGER does not fit in memory.  no_resize set, so exiting.");
+        exit(-1);
+      }
       if(!resized) {
         LOG_W_A("Resizing stinger to fit into memory (detected as %ld)", memory_size);
       }
@@ -234,9 +245,13 @@ stinger_shared_new_full (char ** out, int64_t nv, int64_t nebs, int64_t netypes,
   stinger_vertices_init(vertices, nv);
   stinger_physmap_init(physmap, nv);
   stinger_names_init(etype_names, netypes);
-  stinger_names_create_type(etype_names, "None", &zero);
+  if (!config->no_map_none_etype) {
+    stinger_names_create_type(etype_names, "None", &zero);
+  }
   stinger_names_init(vtype_names, nvtypes);
-  stinger_names_create_type(vtype_names, "None", &zero);
+  if (!config->no_map_none_vtype) {
+    stinger_names_create_type(vtype_names, "None", &zero);
+  };
 
   ebpool->ebpool_tail = 1;
   ebpool->is_shared = 0;
