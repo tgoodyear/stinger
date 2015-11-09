@@ -4,8 +4,8 @@ project (STINGER)
 include (ExternalProject)
 include (CTest)
 
-set(STINGER_VERSION_MAJOR 2013)
-set(STINGER_VERSION_MINOR 06)
+set(STINGER_VERSION_MAJOR 2015)
+set(STINGER_VERSION_MINOR 10)
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
@@ -139,6 +139,10 @@ enable_testing()
 add_test(NamesTest ${CMAKE_BINARY_DIR}/bin/stinger_names_test)
 add_test(StingerCoreTest ${CMAKE_BINARY_DIR}/bin/stinger_core_test)
 add_test(StingerPhysmapTest ${CMAKE_BINARY_DIR}/bin/stinger_physmap_test)
+add_test(StingerTraversalTest ${CMAKE_BINARY_DIR}/bin/stinger_traversal_test)
+add_test(StingerPagerankTest ${CMAKE_BINARY_DIR}/bin/stinger_pagerank_test)
+add_test(StingerAdamicAdarTest ${CMAKE_BINARY_DIR}/bin/stinger_adamic_adar_test)
+add_test(StingerBetweennessTest ${CMAKE_BINARY_DIR}/bin/stinger_betweenness_test)
 
-add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} -E env CTEST_OUTPUT_ON_FAILURE=1 --verbose DEPENDS stinger_names_test stinger_core_test stinger_physmap_test)
+add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} -E env CTEST_OUTPUT_ON_FAILURE=1 --verbose DEPENDS stinger_names_test stinger_core_test stinger_physmap_test stinger_traversal_test stinger_pagerank_test stinger_adamic_adar_test stinger_betweenness_test)
 
