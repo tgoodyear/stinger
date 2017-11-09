@@ -102,10 +102,6 @@ int main(int argc, char *argv[])
 	double timeInSeconds = dpc_toc(start);
 	while((result = fgets(input_line, MAX_LINE, stdin )) != NULL) {
 		NetflowParse p;
-		if(p.isHeader(input_line)) {
-			continue;
-		}
-
 		p.parseLine(input_line);
 
 		/*
@@ -124,7 +120,7 @@ int main(int argc, char *argv[])
 		insertion->set_source_str(p.src);
 		insertion->set_destination_str(p.dest);
 		insertion->set_type_str(p.protocol);
-		insertion->set_weight(p.bytes);
+		insertion->set_weight(1);
 		insertion->set_time(p.time);
 		if (ferror(stdin)) {
 			perror("Error reading stdin.");
@@ -135,7 +131,7 @@ int main(int argc, char *argv[])
 			if (batch_num == 0 || batch_num % batch_size == 0) {
 				int batch_size = batch.insertions_size() + batch.deletions_size();
 				LOG_D ("Sending message");
-				LOG_D_A ("%ld: %d actions. EX: %s:<%s, %s> (w: %d) at time %ld", batch_num, batch_size, p.protocol.c_str(), p.src.c_str(), p.dest.c_str(), p.bytes, p.time);
+				// LOG_D_A ("%ld: %d actions. EX: %s:<%s, %s> (w: %d) at time %ld", batch_num, batch_size, p.protocol.c_str(), p.src.c_str(), p.dest.c_str(), p.bytes, p.time);
 				send_message(sock_handle, batch);
 				batch.clear_insertions();
 				batch_num++;
@@ -150,7 +146,7 @@ int main(int argc, char *argv[])
 			if(timeInSeconds > batch_time){
 				int batch_size = batch.insertions_size() + batch.deletions_size();
 				// LOG_D_A ("%f Seconds, %ld Batches", timeInSeconds, batch_num);
-				LOG_D_A ("%ld: %d actions. EX: %s:<%s, %s> (w: %d) at time %ld after %f seconds", batch_num, batch_size, p.protocol.c_str(), p.src.c_str(), p.dest.c_str(), p.bytes, p.time, dpc_toc(start));
+				// LOG_D_A ("%ld: %d actions. EX: %s:<%s, %s> (w: %d) at time %ld after %f seconds", batch_num, batch_size, p.protocol.c_str(), p.src.c_str(), p.dest.c_str(), p.bytes, p.time, dpc_toc(start));
 				send_message(sock_handle, batch);
 				batch.clear_insertions();
 				batch_buffer.clear();
